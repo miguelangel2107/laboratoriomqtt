@@ -18,19 +18,19 @@ const chkLuces = document.getElementById("chkLuces");
 // Evento: Botón Conectar/Desconectar
 btnConnect.addEventListener("click", () => {
     if (!isConnected) {
-        // Inicializar cliente Paho MQTT
-        client = new Paho.MQTT.Client(brokerUrl, port, clientId);
+        // SOLUCIÓN: Agregar la ruta explícita "/mqtt" requerida por HiveMQ
+        client = new Paho.MQTT.Client(brokerUrl, port, "/mqtt", clientId);
+        
         client.onConnectionLost = onConnectionLost;
         client.onMessageArrived = onMessageArrived;
 
-        // Cambiar el texto mientras intenta conectar
         btnConnect.textContent = "CONECTANDO...";
 
         client.connect({
             onSuccess: onConnect,
             onFailure: onFailure,
             cleanSession: true,
-            useSSL: true // OBLIGATORIO para HiveMQ por el puerto 8884 y Vercel
+            useSSL: true // Requerido en Vercel (HTTPS)
         });
         
     } else {
@@ -50,13 +50,15 @@ function onConnect() {
 
 function onFailure(responseObject) {
     console.error("Fallo al conectar:", responseObject.errorMessage);
-    alert("Error al conectar con HiveMQ. Revisa tu conexión a internet.");
+    // Mostrar el error real en pantalla para depurar en el celular
+    alert("Error de conexión: " + responseObject.errorMessage);
     marcarDesconectado();
 }
 
 function onConnectionLost(responseObject) {
     if (responseObject.errorCode !== 0) {
         console.error("Conexión perdida:", responseObject.errorMessage);
+        alert("Se perdió la conexión: " + responseObject.errorMessage);
     }
     marcarDesconectado();
 }
