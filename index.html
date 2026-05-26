@@ -3,9 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Monitor ESP32 MQTT</title>
+    <!-- Meta tag de color para el navegador y enlace al Manifest de la PWA -->
+    <meta name="theme-color" content="#E53935">
     <link rel="manifest" href="manifest.json">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.1.0/paho-mqtt.min.js"></script>
+    
+    <title>Monitor ESP32 MQTT</title>
+    <!-- Usando EXACTAMENTE la versión de la librería que comprobaste que funciona -->
+    <script src="https://unpkg.com/mqtt@4.3.7/dist/mqtt.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -15,6 +19,7 @@
             display: flex;
             flex-direction: column;
             align-items: center;
+            background-color: #ffffff;
         }
         .header-bar {
             display: flex;
@@ -26,7 +31,7 @@
         }
         .icon { font-size: 30px; }
         .btn-connect {
-            background-color: #E53935; 
+            background-color: #E53935; /* Rojo desconectado */
             color: white;
             border: none;
             padding: 12px 20px;
@@ -35,15 +40,17 @@
             border-radius: 4px;
             cursor: pointer;
             text-transform: uppercase;
+            transition: background-color 0.3s;
         }
         .btn-connect.connected {
-            background-color: #4CAF50; 
+            background-color: #4CAF50; /* Verde conectado */
         }
         
         .title-lab { color: #673AB7; margin: 5px 0; font-size: 18px; text-transform: uppercase; }
         .title-name { color: #4CAF50; margin: 5px 0; font-size: 18px; text-transform: uppercase; }
         .title-monitor { font-size: 24px; margin: 5px 0; font-weight: normal; }
 
+        /* Medidor circular */
         .progress-container {
             position: relative;
             width: 160px;
@@ -70,17 +77,20 @@
 
         .subtitle { font-style: italic; font-weight: bold; font-size: 18px; margin-bottom: 30px; }
 
+        /* Controles de Luces */
         .controls-container {
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 20px;
             margin-top: 10px;
+            margin-bottom: 30px;
         }
         .led-icon { font-size: 50px; }
         .switch-container { display: flex; flex-direction: column; align-items: center; gap: 10px;}
         .switch-text { font-size: 16px; font-weight: bold; }
         
+        /* Checkbox estilo redondo */
         .round-checkbox {
             appearance: none;
             width: 50px; height: 50px;
@@ -89,6 +99,7 @@
             outline: none; cursor: pointer;
             position: relative;
             display: flex; align-items: center; justify-content: center;
+            transition: background-color 0.2s, border-color 0.2s;
         }
         .round-checkbox:checked {
             background-color: white;
@@ -99,10 +110,40 @@
             color: #E53935;
             font-size: 24px;
         }
+
+        /* Consola de depuración en pantalla */
+        #debugInfo {
+            font-size: 12px;
+            color: #666;
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px dashed #ccc;
+            border-radius: 4px;
+            width: 80%;
+            max-width: 400px;
+            word-wrap: break-word;
+        }
+
+        /* Caja de mensajes flotante */
+        #msgBox {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            z-index: 1000;
+            display: none;
+            font-size: 14px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
     </style>
 </head>
 <body>
 
+    <!-- UI Principal -->
     <div class="header-bar">
         <span class="icon">🚘</span>
         <button id="btnConnect" class="btn-connect">DESCONECTADO</button>
@@ -130,6 +171,158 @@
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <!-- Mensajes de estado -->
+    <div id="debugInfo">Esperando acción...</div>
+    <div id="msgBox"></div>
+
+    <script>
+        // --- CONFIGURACIÓN DE CONEXIÓN EXACTA A LA DE REFERENCIA ---
+        const MQTT_BROKER = "wss://broker.hivemq.com:8884/mqtt"; 
+        
+        // Tópicos originales de tu proyecto App Inventor
+        const TOPIC_SUB_VOLTAJE = "esp32/etn801/voltaje";
+        const TOPIC_PUB_LED = "esp32/etn801/led";
+
+        let client = null;
+        let isConnected = false;
+
+        // Referencias del DOM
+        const btnConnect = document.getElementById("btnConnect");
+        const lblVoltaje = document.getElementById("lblVoltaje");
+        const progressCircle = document.getElementById("progressCircle");
+        const chkLuces = document.getElementById("chkLuces");
+        const debugInfo = document.getElementById("debugInfo");
+        const msgBox = document.getElementById("msgBox");
+
+        // --- INICIAR CONEXIÓN AUTOMÁTICA AL CARGAR LA PÁGINA ---
+        document.addEventListener('DOMContentLoaded', () => {
+            conectarMQTT();
+        });
+
+        function showMessage(msg) {
+            msgBox.textContent = msg;
+            msgBox.style.display = "block";
+            setTimeout(() => { msgBox.style.display = "none"; }, 3000);
+        }
+
+        function logInfo(msg) {
+            debugInfo.textContent = "Estado: " + msg;
+            console.log(msg);
+        }
+
+        function actualizarUIConexion(estado) {
+            if (estado === 'conectado') {
+                isConnected = true;
+                btnConnect.textContent = "CONECTADO";
+                btnConnect.classList.add("connected");
+            } else if (estado === 'conectando') {
+                isConnected = false;
+                btnConnect.textContent = "CONECTANDO...";
+                btnConnect.classList.remove("connected");
+            } else {
+                isConnected = false;
+                btnConnect.textContent = "DESCONECTADO";
+                btnConnect.classList.remove("connected");
+            }
+        }
+
+        // --- LÓGICA CENTRAL DE CONEXIÓN ---
+        function conectarMQTT() {
+            if (client && client.connected) return;
+
+            logInfo(`Conectando a ${MQTT_BROKER}...`);
+            actualizarUIConexion('conectando');
+
+            const clientId = "MonitorWeb_" + Math.random().toString(16).substring(2, 8);
+            
+            // Mismos parámetros exactos de tu Mitsubishi App
+            client = mqtt.connect(MQTT_BROKER, { 
+                clientId: clientId, 
+                clean: true, 
+                keepalive: 60, 
+                reconnectPeriod: 5000 
+            });
+
+            client.on('connect', () => {
+                actualizarUIConexion('conectado');
+                logInfo("MQTT Conectado Exitosamente");
+                showMessage("Conectado a HiveMQ");
+
+                // Suscribirse a tu tópico del voltaje
+                client.subscribe(TOPIC_SUB_VOLTAJE);
+            });
+
+            client.on('offline', () => {
+                actualizarUIConexion('desconectado');
+                logInfo("Fuera de línea (Offline)");
+            });
+
+            client.on('close', () => {
+                actualizarUIConexion('desconectado');
+            });
+
+            client.on('error', (err) => {
+                actualizarUIConexion('desconectado');
+                logInfo("Error de red: " + err.message);
+                console.error(err);
+            });
+
+            // PROCESAR MENSAJE
+            client.on('message', (topic, message) => {
+                if (topic === TOPIC_SUB_VOLTAJE) {
+                    let rawPayload = message.toString();
+                    let voltaje = parseFloat(rawPayload);
+                    
+                    if (!isNaN(voltaje)) {
+                        // Actualizar texto
+                        lblVoltaje.textContent = voltaje.toFixed(2);
+                        
+                        // Actualizar anillo circular (0 a 3.3v)
+                        let percent = Math.min(Math.max(voltaje / 3.3, 0), 1);
+                        let offset = 440 - (percent * 440);
+                        progressCircle.style.strokeDashoffset = offset;
+                        
+                        logInfo("RX Voltaje: " + voltaje.toFixed(2) + "V");
+                    }
+                }
+            });
+        }
+
+        // --- EVENTO DEL BOTÓN ---
+        btnConnect.addEventListener("click", () => {
+            if (isConnected) {
+                if (client) client.end();
+                actualizarUIConexion('desconectado');
+                logInfo("Desconectado manualmente");
+            } else {
+                conectarMQTT();
+            }
+        });
+
+        // --- PUBLICAR LUCES ---
+        chkLuces.addEventListener("change", (e) => {
+            if (isConnected && client && client.connected) {
+                let payload = e.target.checked ? "ON" : "OFF";
+                client.publish(TOPIC_PUB_LED, payload);
+                logInfo("TX Luces: " + payload);
+            } else {
+                showMessage("Sin conexión. Conecta primero.");
+                e.target.checked = !e.target.checked; 
+            }
+        });
+
+        // --- REGISTRO DEL SERVICE WORKER (Para la PWA) ---
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                    .then(registration => {
+                        console.log('ServiceWorker registrado con éxito:', registration.scope);
+                    })
+                    .catch(error => {
+                        console.log('Error al registrar el ServiceWorker:', error);
+                    });
+            });
+        }
+    </script>
 </body>
 </html>

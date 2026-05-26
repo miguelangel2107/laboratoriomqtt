@@ -1,11 +1,17 @@
 {
   "name": "Monitor ESP32 MQTT",
-  "short_name": "ESP32 Monitor",
+  "short_name": "Monitor ESP32",
+  "description": "Monitor IoT para laboratorio ETN1022",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#E53935",
   "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/9118/9118937.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
     {
       "src": "https://cdn-icons-png.flaticon.com/512/9118/9118937.png",
       "sizes": "512x512",
